@@ -1,0 +1,10 @@
+# Bundle patch of dsh-deepseek-cost.
+#
+# One host row: the `deepseekCost` session projection (whole-log, per-attempt
+# cost for DeepSeek-official routes only). Its package also declares
+# `dsh.client`, so the same row puts the browser half on the client boot graph;
+# the browser half adds the cost pill and the cost rows inside the built-in
+# Token usage panel.
+- insert:
+    - id: deepseek-cost
+      name: 'dsh-deepseek-cost'

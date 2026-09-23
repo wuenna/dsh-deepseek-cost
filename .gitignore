@@ -1,0 +1,8 @@
+# Dependencies are linked by the DSH profile (link:../../plugins/<name>), never committed.
+node_modules/
+
+# Diagnostics and stray logs
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
