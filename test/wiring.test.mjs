@@ -15,7 +15,9 @@ import { join } from 'node:path';
 
 import * as host from '../lib/index.js';
 
-const PROFILE_DIR = 'C:/Users/wuw/.dsh/profiles/web';
+const PROFILE_ROOT = 'C:/Users/wuw/.dsh/profiles';
+/** Profiles that may load the plugin, most likely first. */
+const PROFILE_NAMES = ['desktop', 'web'];
 
 // `apply()` writes its one-line activation record under `$DSH_HOME`; point that
 // at a throwaway home so running this suite never touches the real state dir.
@@ -28,9 +30,10 @@ process.env.DSH_HOME = sandboxHome;
 	assert.equal(host.name, 'deepseek-cost');
 	assert.deepEqual(host.inject, ['sessionProjections']);
 	assert.equal(host.deepseekCostProjectionDefinition.key, 'deepseekCost');
-	// 2 added the per-turn ledger; a version-1 checkpoint fails the state schema
-	// and is replayed from the log instead of being trusted.
-	assert.equal(host.deepseekCostProjectionDefinition.stateVersion, 2);
+	// 2 added the per-turn ledger, 3 added the `deepseek-account` route to the
+	// billed set; a mismatched checkpoint is replayed from the log rather than
+	// trusted, which is what retro-prices calls logged under the older rules.
+	assert.equal(host.deepseekCostProjectionDefinition.stateVersion, 3);
 	assert.deepEqual(host.deepseekCostProjectionDefinition.init().turns, {}, 'the ledger starts empty');
 	assert.equal(typeof host.deepseekCostProjectionDefinition.init, 'function');
 	assert.equal(typeof host.deepseekCostProjectionDefinition.apply, 'function');
@@ -74,19 +77,32 @@ process.env.DSH_HOME = sandboxHome;
 	console.log('4 ok  wire schema rejects bad values');
 }
 
-// 5. The Cordis loader resolves this package by name from the profile directory,
-//    which is how the `deepseek-cost` row finds it.
+// 5. The Cordis loader resolves this package by name from every profile that
+//    loads it — the desktop app runs the `desktop` profile, `dsh web` the `web`
+//    one — which is how the `deepseek-cost` row finds it.
 {
-	if (!existsSync(join(PROFILE_DIR, 'package.json'))) {
-		console.log('5 skip no web profile at ' + PROFILE_DIR);
-	} else {
-		const requireFromProfile = createRequire(join(PROFILE_DIR, 'package.json'));
+	let checked = 0;
+	for (const profile of PROFILE_NAMES) {
+		const manifestPath = join(PROFILE_ROOT, profile, 'package.json');
+		if (!existsSync(manifestPath)) {
+			console.log(`5 ..  no ${profile} profile at ${join(PROFILE_ROOT, profile)}`);
+			continue;
+		}
+		const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+		const declared = manifest.dependencies?.['dsh-deepseek-cost'] !== undefined || (manifest.dsh?.profile?.bundles ?? []).includes('dsh-deepseek-cost');
+		if (!declared) {
+			console.log(`5 ..  the ${profile} profile does not load this plugin`);
+			continue;
+		}
+		const requireFromProfile = createRequire(manifestPath);
 		const root = requireFromProfile.resolve('dsh-deepseek-cost');
 		const client = requireFromProfile.resolve('dsh-deepseek-cost/client');
-		assert.match(root.replace(/\\/g, '/'), /lib\/index\.js$/);
-		assert.match(client.replace(/\\/g, '/'), /lib\/client\.js$/);
-		console.log('5 ok  resolves from the profile     ', root);
+		assert.match(root.replace(/\\/g, '/'), /lib\/index\.js$/, `${profile} must resolve to the host half`);
+		assert.match(client.replace(/\\/g, '/'), /lib\/client\.js$/, `${profile} must resolve to the browser half`);
+		checked += 1;
+		console.log(`5 ok  resolves from the ${profile} profile`.padEnd(36), root);
 	}
+	assert.ok(checked > 0, 'the plugin must resolve from at least one installed profile');
 }
 
 // Restore the environment and drop the throwaway home.
