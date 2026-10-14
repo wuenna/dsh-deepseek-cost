@@ -4,7 +4,8 @@ A DeepSeek Harness (DSH) plugin that shows what the conversation has cost so far
 a cost pill beside the built-in step/time and token statistics, with the session
 total and the current turn priced at DeepSeek's official peak/off-peak API rates,
 plus one 花费 row in the built-in 本轮用量 panel of every completed turn.
-Every non-DeepSeek route is counted as `0`.
+Both of DeepSeek's own routes — the API key and the signed-in account — are
+priced; every other route is counted as `0`.
 
 ## What it adds
 
@@ -98,9 +99,10 @@ plugin's own ledger was never priced at all, so its panel is left untouched.
 
 ## Estimating the routes billed at 0
 
-Only `deepseek-official` is billed, so every other provider shows a real cost of
-`0`. The estimate says what those same requests *would* have cost at official
-rates.
+Only DeepSeek's own routes are billed — `deepseek-official` (API key) and
+`deepseek-account` (the signed-in account, the desktop's "DeepSeek 账号" mode).
+Every other provider shows a real cost of `0`, and the estimate says what those
+same requests *would* have cost at official rates.
 
 **Which rate.** The model id picks the reference tier: an id naming a Pro model
 references `deepseek-v4-pro`, everything else references `deepseek-flash` — a
@@ -144,10 +146,25 @@ exactly twice every rate. Source:
 - **Cache writes** are charged at the cache-miss rate.
 - **Reasoning tokens** are already part of the provider's `outputTokens`, so
   they need no separate row.
-- A model id with no published rate, and every provider other than
-  `deepseek-official` / `deepseek`, is billed `0` while its tokens stay visible
-  (`freeCalls` in the projection), so an unpriced call is never silently folded
-  into a DeepSeek figure.
+- A model id with no published rate, and every provider that is not DeepSeek's
+  own, is billed `0` while its tokens stay visible (`freeCalls` in the
+  projection), so an unpriced call is never silently folded into a DeepSeek
+  figure.
+
+### Which routes count as DeepSeek's own
+
+| Provider id | What it is | Billed |
+| --- | --- | --- |
+| `deepseek-official` | DeepSeek API key (displayed as **DeepSeek**) | yes |
+| `deepseek-account` | Signed-in DeepSeek account — the desktop's **DeepSeek 账号** mode | yes |
+| `deepseek` | legacy alias kept for older logs | yes |
+| anything else | third-party hosts, local servers, other vendors | `0` + estimate |
+
+Both official routes are registered by DeepSeek's own LLM plugins
+(`@deepseek-ai/dsh-llm-deepseek-api-key` and `@deepseek-ai/dsh-llm-deepseek-account`)
+against one shared Messages transport and one upstream, so only the credential
+differs — the published rates apply identically. Neither route is ever estimated:
+an official cost is already the exact answer.
 
 ## How it works
 
@@ -257,7 +274,7 @@ C:\Users\wuw\AppData\Local\pnpm store --global`), run `pnpm install` in
 
 ```powershell
 cd C:\Users\wuw\.dsh\plugins\dsh-deepseek-cost
-node test/fold.test.mjs      # 23 pricing/fold cases
+node test/fold.test.mjs      # 24 pricing/fold cases
 node test/client.test.mjs    # 20 browser-half render/wiring cases
 node test/wiring.test.mjs    #  5 host-half + package-resolution cases
 ```
@@ -266,7 +283,8 @@ node test/wiring.test.mjs    #  5 host-half + package-resolution cases
 console ledger (2026-09-10 off-peak, 2026-09-11 peak) to six decimals under the
 tier in force on those days, which pins the tier table, the peak windows, and the
 bucket mapping together. Case 2b shows the same token mix one week later priced
-under the current tier. `client.test.mjs` drives the bundle through the real
+under the current tier, and case 20 prices the account route against the API-key
+route to pin them together. `client.test.mjs` drives the bundle through the real
 `window.__ModuleLoader__.load` contract and renders the pill and its dialog
 against a minimal React stand-in, because React is a browser-side static module
 in DSH and is not installed as a Node package. It asserts the single visible
@@ -280,8 +298,18 @@ so the DOM surface cannot grow unnoticed.
 
 The price book lives at the top of `lib/index.js` (`FLASH_TIERS`, `PRO_TIERS`,
 `PRICE_BOOK`, `OFFICIAL_PROVIDERS`). Add a tier for a new model id, or a new
-`{ from, ... }` entry when DeepSeek changes rates. `stateVersion` must be bumped
-whenever the fold's meaning changes, so persisted projection checkpoints are
-discarded instead of forward-applied — it is at `2`, the version that added the
-per-turn ledger; a version-1 checkpoint also fails the state schema, so it is
-replayed from the session log either way.
+`{ from, ... }` entry when DeepSeek changes rates.
+
+`stateVersion` must be bumped whenever the fold's meaning changes, so persisted
+projection checkpoints are discarded instead of forward-applied — it is at `3`:
+
+| Version | Change |
+| ---: | --- |
+| 1 | initial session and current-turn totals |
+| 2 | added the per-turn ledger |
+| 3 | added `deepseek-account` to the billed routes |
+
+The version-3 bump is what retro-prices account-route calls that were already
+logged while the route was still billed `0`: the version-2 rows are discarded and
+every session refolds from the log, so a session that used the account mode
+before the upgrade shows its account cost too.

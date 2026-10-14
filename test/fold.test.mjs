@@ -402,4 +402,25 @@ const usage = (input, output, cacheRead, cacheWrite = 0) => ({
 	console.log('19b ok ledger under replace + retry  ', view.turns['1'].estCost.toFixed(6), '/', view.turns['2'].cost.toFixed(6));
 }
 
+// 20. The desktop's "DeepSeek 账号" mode (`deepseek-account`) is DeepSeek's own
+//     provider on the same upstream as the API-key route (`deepseek-official`),
+//     so identical usage prices identically — never billed 0, never estimated.
+{
+	const at = bj(2026, 10, 13, 20, 0);
+	const buckets = usage(508902, 226133, 107143424, 4096);
+	const official = fold([...start(1, 0, at), message(1, 0, at, buckets, { provider: 'deepseek-official', model: 'deepseek-flash' })]);
+	const account = fold([...start(1, 0, at), message(1, 0, at, buckets, { provider: 'deepseek-account', model: 'deepseek-flash' })]);
+	assert.ok(official.cost > 0, 'the fixture must actually be billable');
+	assert.equal(account.cost, official.cost, 'the two DeepSeek routes cost the same');
+	assert.equal(account.calls, 1);
+	assert.equal(account.freeCalls, 0, 'the account route is not an unbilled route');
+	assert.equal(account.estCost, 0, 'and carries no what-if');
+	assert.equal(account.turns['1'].cost, account.cost, 'the per-turn ledger prices it too');
+	assert.equal(account.provider, 'deepseek-account');
+	// The Pro tier is reached through the account route as well.
+	const pro = fold([...start(1, 0, at), message(1, 0, at, usage(1e6, 0, 0), { provider: 'deepseek-account', model: 'deepseek-v4-pro' })]);
+	assert.ok(Math.abs(pro.cost - 4.5) < 1e-9, `expected the Pro miss rate 4.5, got ${pro.cost}`);
+	console.log('20 ok deepseek-account == official   ', account.cost.toFixed(6), '/', pro.cost.toFixed(6));
+}
+
 console.log('\nall checks passed');
