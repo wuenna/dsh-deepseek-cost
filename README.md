@@ -14,8 +14,19 @@ token pills. The leading `¥` is the currency mark for the whole pill, so the
 amounts beside it stay bare — one symbol per pill:
 
 ```
-[¥] 0.4321 · 本轮 0.0123
+[¥] 0.4321 · 本轮 0.0123                     every call billed
+[¥] 0.0000（0.9840）· 本轮 0.0000（0.4920）     routes billed at 0
 ```
+
+A route billed at `0` still spent tokens, so the collapsed pill shows what those
+calls *would* have cost at official rates beside the billed figure, in
+parentheses and one step dimmer (`--dsw-alias-label-caption`) — otherwise the
+pill reads a flat `0.00` for a session that in fact ran elsewhere. Each scope
+carries its own estimate, and the parentheses come from the dictionary, so the
+English pill uses ASCII parentheses with a leading space while the Chinese one
+uses full-width ones. The accessible name spells the estimate out
+(`会话花费 ¥ 0.0000（预估 ~¥ 0.9840）…`) rather than leaving it to the
+punctuation.
 
 Clicking it opens its own details dialog, shaped like the built-in step and token
 dialogs: the same panel material, title, and rule, and the same shipped
@@ -113,6 +124,11 @@ Only DeepSeek's own routes are billed — `deepseek-official` (API key) and
 `deepseek-account` (the signed-in account, the desktop's "DeepSeek 账号" mode).
 Every other provider shows a real cost of `0`, and the estimate says what those
 same requests *would* have cost at official rates.
+
+The estimate reaches the UI in three places, all of them gated on there being a
+call that was billed at `0`: the collapsed pill's parenthesized figure per scope,
+the `预估（按官方价）` row and its column totals in the details dialog, and the
+`（预估 …）` suffix on the 花费 row of a turn's built-in usage panel.
 
 **Which rate.** The model id picks the reference tier: an id naming a Pro model
 references `deepseek-v4-pro`, everything else references `deepseek-flash` — a
@@ -298,13 +314,14 @@ route to pin them together. `client.test.mjs` drives the bundle through the real
 `window.__ModuleLoader__.load` contract and renders the pill and its dialog
 against a minimal React stand-in, because React is a browser-side static module
 in DSH and is not installed as a Node package. It asserts the single visible
-currency mark, the clamped/measure placement, both dismissal paths, the dialog's
-rows, the absent-projection no-op, the appended 本轮用量 row (including which turn
-it answers for, its idempotence, and its teardown), the panel material parity with
-the built-in dialogs — and, as a regression guard for the 0.1.6 breakage, the
-complete inventory of selectors the bundle evaluates, so the DOM surface cannot
-grow unnoticed. `wiring.test.mjs` resolves the package, and now its locale
-resources, from every profile that loads the plugin.
+currency mark and its parenthesized estimate, the clamped/measure placement, both
+dismissal paths, the dialog's rows, the absent-projection no-op, the appended
+本轮用量 row (including which turn it answers for, its idempotence, and its
+teardown), the panel material parity with the built-in dialogs — and, as a
+regression guard for the 0.1.6 breakage, the complete inventory of selectors the
+bundle evaluates, so the DOM surface cannot grow unnoticed. `wiring.test.mjs`
+resolves the package, and its locale resources, from every profile that loads the
+plugin.
 
 ## What the plugin list shows
 
