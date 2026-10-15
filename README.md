@@ -11,11 +11,12 @@ priced; every other route is counted as `0`.
 
 One **cost pill** in the composer dock, inline beside the built-in step/time and
 token pills. The leading `¥` is the currency mark for the whole pill, so the
-amounts beside it stay bare — one symbol per pill:
+amounts beside it stay bare — one symbol per pill — and every figure is shown at
+two decimals:
 
 ```
-[¥] 0.4321 · 本轮 0.0123                     every call billed
-[¥] 0.0000（0.9840）· 本轮 0.0000（0.4920）     routes billed at 0
+[¥] 0.43 · 本轮 0.51                     every call billed
+[¥] 0.00（0.98）· 本轮 0.00（0.49）     routes billed at 0
 ```
 
 A route billed at `0` still spent tokens, so the collapsed pill shows what those
@@ -25,8 +26,11 @@ pill reads a flat `0.00` for a session that in fact ran elsewhere. Each scope
 carries its own estimate, and the parentheses come from the dictionary, so the
 English pill uses ASCII parentheses with a leading space while the Chinese one
 uses full-width ones. The accessible name spells the estimate out
-(`会话花费 ¥ 0.0000（预估 ~¥ 0.9840）…`) rather than leaving it to the
-punctuation.
+(`会话花费 ¥ 0.00（预估 ~¥ 0.98）…`) rather than leaving it to the punctuation.
+
+Two decimals means an amount below half a cent shows as `0.00`. The wire keeps
+six decimals and the host prices exactly, so nothing is lost upstream; it takes a
+very short turn with a warm cache to land below the display threshold at all.
 
 Clicking it opens its own details dialog, shaped like the built-in step and token
 dialogs: the same panel material, title, and rule, and the same shipped
@@ -47,16 +51,16 @@ The two scope totals sit in the title bar, and because the grid starts at the
 panel edge they land exactly over the columns they summarize.
 
 ```
-¥  花费                  ¥ 0.4321     ¥ 0.0123
+¥  花费                     ¥ 0.43       ¥ 0.51
 ──────────────────────────────────────────────
-                          会话         本轮
-输入未缓存               ¥ 0.0120     ¥ 0.0010
-输入缓存                 ¥ 0.0988     ¥ 0.0028
-输出                     ¥ 0.3213     ¥ 0.0085
+                             会话         本轮
+输入未缓存                  ¥ 0.01       ¥ 0.11
+输入缓存                    ¥ 0.10       ¥ 0.02
+输出                        ¥ 0.32       ¥ 0.38
 ──────────────────────────────────────────────
-预估（按官方价）         ~¥ 0.1650    ~¥ 0.0165
+预估（按官方价）            ~¥ 0.17      ~¥ 0.02
 ──────────────────────────────────────────────
-计费时段                              空闲时段
+计费时段                                空闲时段
 未计费调用            1 次 · 非 DeepSeek 官方，按 0 计
 ```
 
