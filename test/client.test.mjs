@@ -286,12 +286,35 @@ const cost = {
 	const markupEn = html(React.createElement(CostPill, { cost, t: seat(en) }));
 	assert.equal((/class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(markupEn)[1].includes('¥')), false);
 	assert.match(markupEn, /this turn 0\.0123/);
-	// The visible label stays clean; the estimate rides in the tooltip only.
-	assert.equal(label[1].includes('预估'), false, 'the pill label is not cluttered with the estimate');
-	const withFree = html(React.createElement(CostPill, { cost: { ...cost, freeCalls: 3 }, t: seat(zh) }));
-	assert.match(withFree, /title="[^"]*· 预估 ~¥ 0\.1650"/, 'the tooltip carries the estimate when one exists');
+	// An official-only session has no what-if, so nothing is parenthesized.
+	assert.equal(markup.includes('dcost_estFigure'), false, 'nothing to parenthesize when every call was billed');
 	assert.match(html(React.createElement(CostPill, { cost, t: seat(zh) })), /title="[^"]*（空闲时段）"/);
-	console.log('2 ok  one visible currency mark     ', `¥${label[1].replace(/<[^>]*>/g, '')}`);
+
+	// A route billed at 0 puts its estimate beside the billed figure in each
+	// scope, in parentheses and one step dimmer, instead of leaving a bare 0.00 as
+	// the only visible number; the accessible name spells the estimate out.
+	const billedFree = { ...cost, freeCalls: 3, turnFreeCalls: 2 };
+	const withFree = html(React.createElement(CostPill, { cost: billedFree, t: seat(zh) }));
+	const freeLabel = /class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(withFree)[1];
+	assert.equal(
+		freeLabel,
+		'0.4321<span class="dcost_estFigure">（0.1650）</span><span class="dcost_sep" aria-hidden="true">·</span>本轮 0.0123<span class="dcost_estFigure">（0.0165）</span>',
+		'each scope carries its own parenthesized estimate'
+	);
+	assert.equal(freeLabel.includes('¥'), false, 'the parenthesized estimates stay bare too');
+	assert.match(withFree, /aria-label="会话花费 ¥ 0\.4321（预估 ~¥ 0\.1650），本轮花费 ¥ 0\.0123（预估 ~¥ 0\.0165）"/, 'the estimate is spoken, not just parenthesized');
+	assert.match(withFree, /title="[^"]*· 预估 ~¥ 0\.1650"/, 'the tooltip still carries the session estimate');
+
+	// The parentheses come from the dictionary, so the English figure uses ASCII
+	// parentheses with a leading space, as the built-in reasoning suffix does.
+	const freeEn = html(React.createElement(CostPill, { cost: billedFree, t: seat(en) }));
+	const freeEnLabel = /class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(freeEn)[1];
+	assert.equal(
+		freeEnLabel,
+		'0.4321<span class="dcost_estFigure"> (0.1650)</span><span class="dcost_sep" aria-hidden="true">·</span>this turn 0.0123<span class="dcost_estFigure"> (0.0165)</span>'
+	);
+	assert.match(freeEn, /aria-label="Session cost ¥ 0\.4321 \(est\. ~¥ 0\.1650\), this turn ¥ 0\.0123 \(est\. ~¥ 0\.0165\)"/);
+	console.log('2 ok  one visible currency mark     ', `¥${label[1].replace(/<[^>]*>/g, '')} / ¥${freeLabel.replace(/<[^>]*>/g, '')}`);
 }
 
 // 3. A closed pill portals nothing; an open one portals its dialog.
