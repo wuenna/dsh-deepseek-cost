@@ -18,8 +18,18 @@ amounts beside it stay bare — one symbol per pill:
 ```
 
 Clicking it opens its own details dialog, shaped like the built-in step and token
-dialogs (same panel, title, and rule — the same shipped `useAnchoredPosition` /
-`useDismissOnOutsidePointer` primitives position and dismiss it).
+dialogs: the same panel material, title, and rule, and the same shipped
+`useAnchoredPosition` / `useDismissOnOutsidePointer` primitives to position and
+dismiss it.
+
+The material is the built-in one token for token, which matters more than it
+looks: the menu surface (`--dsw-specific-menu`) is a *translucent* colour —
+`#303136f0` in the desktop dark theme — and it only reads as solid because the
+built-in panels also apply `backdrop-filter: var(--dsw-menu-backdrop-filter)`
+(`blur(40px) saturate(150%)`, defined on `body` and so inherited by a panel
+portaled to `body`). A panel that sets the surface without that filter shows the
+transcript through it. The radius is the theme's `--dsw-radius-lg` rather than a
+hardcoded value, for the same reason. `client.test.mjs` case 16 pins this.
 
 The panel itself is the grid: the cost category, then **one column per scope**.
 The two scope totals sit in the title bar, and because the grid starts at the
@@ -211,7 +221,7 @@ Two directories carry this plugin's name, and they hold different things:
 
 | Path | What it is |
 | --- | --- |
-| `~/.dsh/plugins/dsh-deepseek-cost/` | The **plugin source**: `package.json`, `cordis.patch.yml`, `lib/`, `test/`, `README.md`. Everything you edit lives here. |
+| `~/.dsh/plugins/dsh-deepseek-cost/` | The **plugin source**: `package.json`, `cordis.patch.yml`, `lib/`, `locale/`, `test/`, `README.md`. Everything you edit lives here. |
 | `~/.dsh/dsh-deepseek-cost/` | The plugin's **state dir**, owned by the running plugin. It holds only `boot.log`. |
 
 `boot.log` is a one-line activation record the host half overwrites on every
@@ -275,8 +285,8 @@ C:\Users\wuw\AppData\Local\pnpm store --global`), run `pnpm install` in
 ```powershell
 cd C:\Users\wuw\.dsh\plugins\dsh-deepseek-cost
 node test/fold.test.mjs      # 24 pricing/fold cases
-node test/client.test.mjs    # 20 browser-half render/wiring cases
-node test/wiring.test.mjs    #  5 host-half + package-resolution cases
+node test/client.test.mjs    # 21 browser-half render/wiring cases
+node test/wiring.test.mjs    #  7 host-half + package-resolution cases
 ```
 
 `fold.test.mjs` cases 1 and 2 reproduce two aggregates from a real DeepSeek
@@ -290,9 +300,43 @@ against a minimal React stand-in, because React is a browser-side static module
 in DSH and is not installed as a Node package. It asserts the single visible
 currency mark, the clamped/measure placement, both dismissal paths, the dialog's
 rows, the absent-projection no-op, the appended 本轮用量 row (including which turn
-it answers for, its idempotence, and its teardown) — and, as a regression guard
-for the 0.1.6 breakage, the complete inventory of selectors the bundle evaluates,
-so the DOM surface cannot grow unnoticed.
+it answers for, its idempotence, and its teardown), the panel material parity with
+the built-in dialogs — and, as a regression guard for the 0.1.6 breakage, the
+complete inventory of selectors the bundle evaluates, so the DOM surface cannot
+grow unnoticed. `wiring.test.mjs` resolves the package, and now its locale
+resources, from every profile that loads the plugin.
+
+## What the plugin list shows
+
+Settings lists this plugin as **DeepSeek 花费统计** with a one-line summary,
+instead of the bare module-derived `deepseek-cost`. DSH reads that text from
+`<package>/locale/<language>.json` — the same mechanism the shipped packages use —
+through the package's own `exports`, so the resource must be exported:
+
+```json
+// package.json
+"exports": { "./locale/*.json": "./locale/*.json" }
+```
+
+```json
+// locale/zh.json
+{ "meta": { "title": "DeepSeek 花费统计", "description": "按 DeepSeek 官方价……" } }
+```
+
+- The filename is the language id (`en.json`, `zh.json`, …), the key inside is
+  `meta`, and **`en.json` is required**: DSH enumerates that directory only when
+  the English resource resolves, and `ctx.locale.resolveText` needs the `en`
+  fallback before it walks the active language's fallback chain (`zh-CN` → `zh` →
+  `en`).
+- `package.json` `name` / `description` remain the fallbacks for a package with no
+  locale directory, and the plugin list shortens a bare `name` by stripping the
+  `dsh-` / `dsh-host-` / `dsh-client-` prefix — which is why the plugin used to
+  read `deepseek-cost`.
+- `package.json` `icon` (a manifest-relative SVG/PNG/JPEG/WebP under 256 KiB) is
+  read the same way. This package ships no icon.
+- `wiring.test.mjs` case 6 resolves both files from every profile that loads the
+  plugin and checks the shape, because a missing export fails silently: the list
+  just falls back to the package name.
 
 ## Configuration
 
