@@ -681,4 +681,35 @@ const cost = {
 	console.log('15b ok fallback to the current turn');
 }
 
+// 16. The dialog panel wears the built-in stat dialog's material. The menu
+//     surface token is translucent (`#303136f0` in the desktop dark theme), so
+//     the shared backdrop filter is what makes a panel read as solid — dropping
+//     it is what let the transcript show through this dialog.
+{
+	const js = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
+	const panel = /'\.dcost_panel\{([^']*)\}'/.exec(js);
+	assert.notEqual(panel, null, 'the panel rule must be one declaration block');
+	const declarations = panel[1];
+	assert.match(declarations, /background:var\(--dsw-specific-menu\)/, 'the built-in menu surface token');
+	assert.match(declarations, /backdrop-filter:var\(--dsw-menu-backdrop-filter\)/, 'the shared menu backdrop filter');
+	assert.match(declarations, /border-radius:var\(--dsw-radius-lg\)/, "the theme's large radius, as the built-in panels use");
+	assert.equal(declarations.includes('border-radius:12px'), false, 'no hardcoded radius');
+	assert.match(declarations, /box-shadow:var\(--dsw-elevation-prominent\)/, 'the built-in elevation');
+	// Everything else the built-in panel fixes, this one fixes identically.
+	for (const declaration of [
+		'z-index:1100',
+		'box-sizing:border-box',
+		'--dsw-elevation-stroke-color:var(--dsw-alias-border-l1)',
+		'padding:16px',
+		'font-size:12px',
+		'line-height:18px',
+		'position:fixed'
+	]) {
+		assert.ok(declarations.includes(declaration), `the panel keeps ${declaration}`);
+	}
+	// The panel is also the grid, which is this dialog's own reason to exist.
+	assert.match(declarations, /display:grid/, 'the panel itself is still the grid');
+	console.log('16 ok panel matches the built-in material');
+}
+
 console.log('\nall checks passed');
