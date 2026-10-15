@@ -218,21 +218,29 @@ const clickedTrigger = (turn) => ({
 			: null
 });
 
-// 1. Money formatting keeps whole amounts at two decimals, sub-yuan ones at four,
-//    and separates the currency symbol from the figure with a space.
+// 1. Money formatting is two decimals everywhere — a sub-yuan amount keeps the
+//    same precision as a whole one — and separates the currency symbol from the
+//    figure with a space.
 {
 	assert.equal(formatAmount(0), '0.00');
-	assert.equal(formatAmount(0.5), '0.5000');
-	assert.equal(formatAmount(1.005), '1.00');
+	assert.equal(formatAmount(0.5), '0.50');
+	assert.equal(formatAmount(1.005), '1.00', 'the float representation, not decimal 1.005');
 	assert.equal(formatAmount(12.3456), '12.35');
-	assert.equal(formatMoney(0.4321, 'CNY'), '¥ 0.4321');
+	assert.equal(formatAmount(0.0123), '0.01');
+	assert.equal(formatAmount(0.0049), '0.00', 'below half a cent is not shown, and not invented either');
+	assert.equal(formatMoney(0.4321, 'CNY'), '¥ 0.43');
 	assert.equal(formatMoney(12.3, 'CNY'), '¥ 12.30');
 	assert.equal(formatMoney(undefined, 'CNY'), '¥ 0.00');
 	assert.equal(formatMoney(3.5, 'XTS'), '3.50', 'a currency with no symbol renders bare');
-	assert.equal(formatEstimate(0.165, 'CNY'), '~¥ 0.1650', 'an estimate is tilde-marked');
+	assert.equal(formatEstimate(0.165, 'CNY'), '~¥ 0.17', 'an estimate is tilde-marked');
 	console.log('1 ok  money formatting              ', formatMoney(0.4321, 'CNY'), '/', formatEstimate(0.165, 'CNY'));
 }
 
+// The sample projection value. Session amounts stay noisy (they arrive at six
+// decimals from the host, so the render path is exercised rounding them); the
+// turn amounts and the ledger are already two-decimal and distinct, which keeps
+// the "printed exactly once" assertions meaningful now that every figure is
+// shown at two decimals.
 const cost = {
 	currency: 'CNY',
 	cost: 0.4321,
@@ -249,12 +257,12 @@ const cost = {
 	freeCalls: 0,
 	unpricedCalls: 0,
 	turn: 3,
-	turnCost: 0.0123,
-	turnUncachedCost: 0.001,
-	turnCacheReadCost: 0.0028,
+	turnCost: 0.51,
+	turnUncachedCost: 0.11,
+	turnCacheReadCost: 0.02,
 	turnCacheWriteCost: 0,
-	turnOutputCost: 0.0085,
-	turnEstCost: 0.0165,
+	turnOutputCost: 0.38,
+	turnEstCost: 0.02,
 	turnUncachedTokens: 1000,
 	turnCacheReadTokens: 140000,
 	turnCacheWriteTokens: 0,
@@ -268,7 +276,7 @@ const cost = {
 	model: 'deepseek-flash',
 	// The per-turn ledger the built-in usage dialog is answered from: turn 3 is
 	// the current turn and carries an estimate; turn 2 is a finished turn.
-	turns: { 2: { cost: 0.5, estCost: 0 }, 3: { cost: 0.0123, estCost: 0.0165 } }
+	turns: { 2: { cost: 7.25, estCost: 0 }, 3: { cost: 0.51, estCost: 0.02 } }
 };
 
 // 2. The pill shows the currency mark exactly once in its visible text, then bare
@@ -280,12 +288,12 @@ const cost = {
 	const label = /class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(markup);
 	assert.notEqual(label, null);
 	assert.equal(label[1].includes('¥'), false, 'the amounts beside the icon stay bare');
-	assert.match(label[1], /^0\.4321<span class="dcost_sep"[^>]*>·<\/span>本轮 0\.0123$/);
+	assert.match(label[1], /^0\.43<span class="dcost_sep"[^>]*>·<\/span>本轮 0\.51$/);
 	assert.match(markup, /空闲时段/, 'the tooltip states the billing window');
-	assert.match(markup, /aria-label="会话花费 ¥ 0\.4321，本轮花费 ¥ 0\.0123"/);
+	assert.match(markup, /aria-label="会话花费 ¥ 0\.43，本轮花费 ¥ 0\.51"/);
 	const markupEn = html(React.createElement(CostPill, { cost, t: seat(en) }));
 	assert.equal((/class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(markupEn)[1].includes('¥')), false);
-	assert.match(markupEn, /this turn 0\.0123/);
+	assert.match(markupEn, /this turn 0\.51/);
 	// An official-only session has no what-if, so nothing is parenthesized.
 	assert.equal(markup.includes('dcost_estFigure'), false, 'nothing to parenthesize when every call was billed');
 	assert.match(html(React.createElement(CostPill, { cost, t: seat(zh) })), /title="[^"]*（空闲时段）"/);
@@ -298,12 +306,12 @@ const cost = {
 	const freeLabel = /class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(withFree)[1];
 	assert.equal(
 		freeLabel,
-		'0.4321<span class="dcost_estFigure">（0.1650）</span><span class="dcost_sep" aria-hidden="true">·</span>本轮 0.0123<span class="dcost_estFigure">（0.0165）</span>',
+		'0.43<span class="dcost_estFigure">（0.17）</span><span class="dcost_sep" aria-hidden="true">·</span>本轮 0.51<span class="dcost_estFigure">（0.02）</span>',
 		'each scope carries its own parenthesized estimate'
 	);
 	assert.equal(freeLabel.includes('¥'), false, 'the parenthesized estimates stay bare too');
-	assert.match(withFree, /aria-label="会话花费 ¥ 0\.4321（预估 ~¥ 0\.1650），本轮花费 ¥ 0\.0123（预估 ~¥ 0\.0165）"/, 'the estimate is spoken, not just parenthesized');
-	assert.match(withFree, /title="[^"]*· 预估 ~¥ 0\.1650"/, 'the tooltip still carries the session estimate');
+	assert.match(withFree, /aria-label="会话花费 ¥ 0\.43（预估 ~¥ 0\.17），本轮花费 ¥ 0\.51（预估 ~¥ 0\.02）"/, 'the estimate is spoken, not just parenthesized');
+	assert.match(withFree, /title="[^"]*· 预估 ~¥ 0\.17"/, 'the tooltip still carries the session estimate');
 
 	// The parentheses come from the dictionary, so the English figure uses ASCII
 	// parentheses with a leading space, as the built-in reasoning suffix does.
@@ -311,9 +319,9 @@ const cost = {
 	const freeEnLabel = /class="dcost_label">([\s\S]*?)<\/span><\/button>/.exec(freeEn)[1];
 	assert.equal(
 		freeEnLabel,
-		'0.4321<span class="dcost_estFigure"> (0.1650)</span><span class="dcost_sep" aria-hidden="true">·</span>this turn 0.0123<span class="dcost_estFigure"> (0.0165)</span>'
+		'0.43<span class="dcost_estFigure"> (0.17)</span><span class="dcost_sep" aria-hidden="true">·</span>this turn 0.51<span class="dcost_estFigure"> (0.02)</span>'
 	);
-	assert.match(freeEn, /aria-label="Session cost ¥ 0\.4321 \(est\. ~¥ 0\.1650\), this turn ¥ 0\.0123 \(est\. ~¥ 0\.0165\)"/);
+	assert.match(freeEn, /aria-label="Session cost ¥ 0\.43 \(est\. ~¥ 0\.17\), this turn ¥ 0\.51 \(est\. ~¥ 0\.02\)"/);
 	console.log('2 ok  one visible currency mark     ', `¥${label[1].replace(/<[^>]*>/g, '')} / ¥${freeLabel.replace(/<[^>]*>/g, '')}`);
 }
 
@@ -371,12 +379,12 @@ const cost = {
 	const markup = html(React.createElement(CostDialog, { cost, panelRef: { current: null }, pos: ANCHORED, t: seat(zh) }));
 	assert.match(markup, /<div class="dcost_panel"[^>]*>/, 'the panel itself is the grid');
 	assert.equal(markup.includes('<dl'), false, 'no separate details list');
-	assert.match(markup, /<span class="dcost_titleLabel"><span class="dcost_icon" aria-hidden="true">¥<\/span>花费<\/span><span class="dcost_total" data-deepseek-cost="total-session">¥ 0\.4321<\/span><span class="dcost_total" data-deepseek-cost="total-turn">¥ 0\.0123<\/span>/, 'both totals follow the panel name in the title bar');
+	assert.match(markup, /<span class="dcost_titleLabel"><span class="dcost_icon" aria-hidden="true">¥<\/span>花费<\/span><span class="dcost_total" data-deepseek-cost="total-session">¥ 0\.43<\/span><span class="dcost_total" data-deepseek-cost="total-turn">¥ 0\.51<\/span>/, 'both totals follow the panel name in the title bar');
 	assert.equal(markup.includes('合计'), false, 'the 合计 word and its row are gone');
 	assert.match(markup, /<span class="dcost_head" aria-hidden="true"><\/span><span class="dcost_head">会话<\/span><span class="dcost_head">本轮<\/span>/);
-	assert.match(markup, /<span class="dcost_term">输入未缓存<\/span><span class="dcost_value" data-deepseek-cost="uncachedInput-session">¥ 0\.0120<\/span><span class="dcost_value" data-deepseek-cost="uncachedInput-turn">¥ 0\.0010<\/span>/);
-	assert.match(markup, /<span class="dcost_term">输入缓存<\/span><span class="dcost_value" data-deepseek-cost="cachedInput-session">¥ 0\.0988<\/span><span class="dcost_value" data-deepseek-cost="cachedInput-turn">¥ 0\.0028<\/span>/);
-	assert.match(markup, /<span class="dcost_term">输出<\/span><span class="dcost_value" data-deepseek-cost="output-session">¥ 0\.3213<\/span><span class="dcost_value" data-deepseek-cost="output-turn">¥ 0\.0085<\/span>/);
+	assert.match(markup, /<span class="dcost_term">输入未缓存<\/span><span class="dcost_value" data-deepseek-cost="uncachedInput-session">¥ 0\.01<\/span><span class="dcost_value" data-deepseek-cost="uncachedInput-turn">¥ 0\.11<\/span>/);
+	assert.match(markup, /<span class="dcost_term">输入缓存<\/span><span class="dcost_value" data-deepseek-cost="cachedInput-session">¥ 0\.10<\/span><span class="dcost_value" data-deepseek-cost="cachedInput-turn">¥ 0\.02<\/span>/);
+	assert.match(markup, /<span class="dcost_term">输出<\/span><span class="dcost_value" data-deepseek-cost="output-session">¥ 0\.32<\/span><span class="dcost_value" data-deepseek-cost="output-turn">¥ 0\.38<\/span>/);
 	assert.equal((markup.match(/dcost_head/g) ?? []).length, 3, 'one empty corner plus the two scope captions');
 	assert.equal((markup.match(/dcost_term/g) ?? []).length, 3, 'exactly the three cost categories');
 
@@ -415,8 +423,8 @@ const cost = {
 // 5c. Each total is printed exactly once, in the title bar.
 {
 	const markup = html(React.createElement(CostDialog, { cost, panelRef: { current: null }, pos: ANCHORED, t: seat(zh) }));
-	assert.equal((markup.match(/¥ 0\.4321/g) ?? []).length, 1, 'the session total appears exactly once');
-	assert.equal((markup.match(/¥ 0\.0123/g) ?? []).length, 1, 'the turn total appears exactly once');
+	assert.equal((markup.match(/¥ 0\.43/g) ?? []).length, 1, 'the session total appears exactly once');
+	assert.equal((markup.match(/¥ 0\.51/g) ?? []).length, 1, 'the turn total appears exactly once');
 	assert.match(markup, /style="position:fixed;left:10;top:20"/, 'the clamped placement is applied');
 	console.log('5c ok totals printed once');
 }
@@ -437,7 +445,7 @@ const cost = {
 	assert.match(markup, /<div class="dcost_rule" aria-hidden="true"><\/div>/, 'the estimate is ruled off from the billed rows');
 	assert.match(
 		markup,
-		/<span class="dcost_term dcost_est"[^>]*>预估（按官方价）<\/span><span class="dcost_value dcost_est" data-deepseek-cost="estCost-session"[^>]*>~¥ 0\.1650<\/span><span class="dcost_value dcost_est" data-deepseek-cost="estCost-turn"[^>]*>~¥ 0\.0165<\/span>/
+		/<span class="dcost_term dcost_est"[^>]*>预估（按官方价）<\/span><span class="dcost_value dcost_est" data-deepseek-cost="estCost-session"[^>]*>~¥ 0\.17<\/span><span class="dcost_value dcost_est" data-deepseek-cost="estCost-turn"[^>]*>~¥ 0\.02<\/span>/
 	);
 	assert.match(markup, /title="把这些非官方调用按 DeepSeek 官方价折算[^"]*"/, 'the row explains the assumption');
 	assert.match(markup, /<span class="dcost_footTerm">未计费调用<\/span><span class="dcost_footValue dcost_note" data-deepseek-cost="free">9 次 · 非 DeepSeek 官方，按 0 计<\/span>/);
@@ -477,7 +485,7 @@ const cost = {
 	assert.equal(portals.length, 0, 'no portal is opened while the dialog is closed');
 	const markup = html(rendered);
 	assert.match(markup, /class="dcost_anchor"/);
-	assert.match(markup, /本轮 0\.0123/);
+	assert.match(markup, /本轮 0\.51/);
 	console.log('9 ok  pill rendered inline by the occupant');
 }
 
@@ -588,19 +596,19 @@ const cost = {
 	const model = turnCostModel(cost, 3, seat(zh));
 	assert.deepEqual(Object.keys(model).sort(), ['estimate', 'note', 'term', 'value']);
 	assert.equal(model.term, '花费');
-	assert.equal(model.value, '¥ 0.0123');
-	assert.equal(model.estimate, '（预估 ~¥ 0.0165）');
+	assert.equal(model.value, '¥ 0.51');
+	assert.equal(model.estimate, '（预估 ~¥ 0.02）');
 	assert.match(model.note, /按 DeepSeek 官方价折算/, 'the estimate explains its assumption');
 
 	// An official-only turn carries no estimate at all.
 	const plain = turnCostModel(cost, 2, seat(zh));
-	assert.equal(plain.value, '¥ 0.5000');
+	assert.equal(plain.value, '¥ 7.25');
 	assert.equal(plain.estimate, undefined);
 	assert.equal(plain.note, undefined);
 
 	// The English seat is honoured, and anything the ledger never priced is skipped.
 	assert.equal(turnCostModel(cost, 3, seat(en)).term, 'Cost');
-	assert.equal(turnCostModel(cost, '3', seat(zh)).value, '¥ 0.0123', 'the footer marker arrives as a string');
+	assert.equal(turnCostModel(cost, '3', seat(zh)).value, '¥ 0.51', 'the footer marker arrives as a string');
 	assert.equal(turnCostModel(cost, 99, seat(zh)), undefined, 'a turn with no ledger entry');
 	assert.equal(turnCostModel(undefined, 3, seat(zh)), undefined, 'no projection');
 	assert.equal(turnCostModel({ ...cost, turns: undefined }, 3, seat(zh)), undefined, 'no ledger');
@@ -609,7 +617,7 @@ const cost = {
 	assert.equal(paintUsageRow(panel, model), true);
 	assert.equal(
 		domHtml(details),
-		'<dl><dt class="dcost_usageTerm">花费</dt><dd class="dcost_usageValue" data-deepseek-cost="usage-turn">¥ 0.0123<span class="dcost_usageEst">（预估 ~¥ 0.0165）</span></dd></dl>'
+		'<dl><dt class="dcost_usageTerm">花费</dt><dd class="dcost_usageValue" data-deepseek-cost="usage-turn">¥ 0.51<span class="dcost_usageEst">（预估 ~¥ 0.02）</span></dd></dl>'
 	);
 	assert.equal(paintUsageRow(panel, model), true, 'a second paint is a no-op');
 	assert.equal(details.children.length, 2, 'the row is never stacked');
@@ -660,13 +668,13 @@ const cost = {
 
 	const second = usageDialog();
 	observers[0].callback([{ addedNodes: [second.panel] }]);
-	assert.match(domHtml(second.details), /¥ 0.5000/, 'the clicked turn\'s own cost, not the current turn\'s');
+	assert.match(domHtml(second.details), /¥ 7\.25/, 'the clicked turn\'s own cost, not the current turn\'s');
 
 	// The next dialog is answered by the turn clicked for it.
 	const third = usageDialog();
 	listeners[0].handler({ target: clickedTrigger('3') });
 	observers[0].callback([{ addedNodes: [third.panel] }]);
-	assert.match(domHtml(third.details), /¥ 0.0123/);
+	assert.match(domHtml(third.details), /¥ 0\.51/);
 
 	// Nodes that are not dialogs are ignored, and so is a dialog that is not the
 	// usage panel.
@@ -679,7 +687,7 @@ const cost = {
 		['click']
 	);
 	assert.equal(observers[0].disconnected, true, 'the observer stops with the occupant');
-	console.log('15 ok watcher names the turn         ', '¥ 0.5000 / ¥ 0.0123');
+	console.log('15 ok watcher names the turn         ', '¥ 7.25 / ¥ 0.51');
 }
 
 // 15b. With no trigger click to go on — the dialog cannot be opened any other
@@ -699,7 +707,7 @@ const cost = {
 	hooks.effectFns[0]();
 	const { panel, details } = usageDialog();
 	observers.at(-1).callback([{ addedNodes: [panel] }]);
-	assert.match(domHtml(details), /¥ 0.0123/, 'the current turn is turn 3 in the fixture');
+	assert.match(domHtml(details), /¥ 0\.51/, 'the current turn is turn 3 in the fixture');
 	assert.equal(cost.turn, 3, 'the fallback reads the projection\'s current turn');
 	console.log('15b ok fallback to the current turn');
 }
