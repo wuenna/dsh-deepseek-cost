@@ -105,6 +105,44 @@ process.env.DSH_HOME = sandboxHome;
 	assert.ok(checked > 0, 'the plugin must resolve from at least one installed profile');
 }
 
+// 6. The settings plugin list reads a plugin's display name and summary from
+//    `<package>/locale/<language>.json` through the package's own exports
+//    (`readPluginMeta` in @deepseek-ai/dsh-app-boot enumerates that directory,
+//    and `ctx.locale.resolveText` picks the active language). Both the English
+//    fallback the reader requires and the Chinese text the UI shows must
+//    therefore resolve from every profile that loads the plugin: without the
+//    `./locale/*.json` export the files are invisible and the list silently
+//    falls back to the bare package name.
+{
+	let checked = 0;
+	for (const profile of PROFILE_NAMES) {
+		const manifestPath = join(PROFILE_ROOT, profile, 'package.json');
+		if (!existsSync(manifestPath)) continue;
+		const requireFromProfile = createRequire(manifestPath);
+		let english;
+		try {
+			english = requireFromProfile.resolve('dsh-deepseek-cost/locale/en.json');
+		} catch {
+			continue; // this profile does not load the plugin
+		}
+		const chinese = requireFromProfile.resolve('dsh-deepseek-cost/locale/zh.json');
+		for (const [language, file] of [['en', english], ['zh', chinese]]) {
+			const parsed = JSON.parse(readFileSync(file, 'utf8'));
+			assert.equal(typeof parsed.meta?.title, 'string', `${language}.json needs meta.title`);
+			assert.equal(typeof parsed.meta?.description, 'string', `${language}.json needs meta.description`);
+			assert.notEqual(parsed.meta.title.trim(), '', `${language} title must not be empty`);
+			assert.notEqual(parsed.meta.description.trim(), '', `${language} description must not be empty`);
+		}
+		const zh = JSON.parse(readFileSync(chinese, 'utf8'));
+		assert.match(zh.meta.title, /[\u4e00-\u9fff]/, 'the Chinese title must actually be Chinese');
+		assert.match(zh.meta.description, /[\u4e00-\u9fff]/, 'the Chinese summary must actually be Chinese');
+		assert.match(JSON.parse(readFileSync(english, 'utf8')).meta.title, /^[\x20-\x7e]+$/, 'the English title stays ASCII');
+		checked += 1;
+		console.log(`6 ok  display metadata resolves from the ${profile} profile`.padEnd(50), 'en + zh');
+	}
+	assert.ok(checked > 0, 'the display metadata must resolve from at least one installed profile');
+}
+
 // Restore the environment and drop the throwaway home.
 if (previousHome === undefined) delete process.env.DSH_HOME;
 else process.env.DSH_HOME = previousHome;

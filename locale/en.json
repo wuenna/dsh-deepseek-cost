@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek Cost",
+    "description": "Prices the session total and every turn at DeepSeek's official rates, in a cost pill in the composer dock and a 花费 row appended to each turn's built-in usage panel; routes that are not DeepSeek's own are billed 0 and carry an official-rate estimate."
+  }
+}
