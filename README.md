@@ -170,7 +170,18 @@ exactly twice every rate. Source:
 | `deepseek-v4-pro` | 2026-08-17 00:00 | 0.15 | 4.5 | 13.5 |
 
 - **Peak windows** are Beijing 09:00–12:00 and 14:00–18:00, **Monday through
-  Friday**; everything else is off-peak, weekends included.
+  Friday**; everything else is off-peak, weekends and **Chinese statutory
+  holidays** included. The holiday ranges come from the State Council's 2026
+  notice (国办发明电〔2025〕7号) and are listed as `HOLIDAY_RANGES` at the top of
+  `lib/index.js`; a year with no ranges there is charged as if every weekday were
+  ordinary. The 调休 makeup workdays are deliberately *not* peak — the published
+  rule keys off weekdays and calls weekends off-peak all day, so a Saturday stays
+  off-peak however it is worked. The 计费时段 row names the window of the
+  **latest attempt that had a route**, which is the window that attempt's own
+  figures were priced in — both the real price and the what-if call the same rule
+  on the same timestamp, so the label and the amounts cannot disagree. A session
+  that spans a boundary therefore labels the newest window, not a session-wide
+  one; the totals themselves already mix the windows they were incurred in.
 - The two retired Flash aliases are still callable and are served — and billed —
   as `deepseek-flash`, so they share its tiers.
 - **Cache writes** are charged at the cache-miss rate.
@@ -304,9 +315,9 @@ C:\Users\wuw\AppData\Local\pnpm store --global`), run `pnpm install` in
 
 ```powershell
 cd C:\Users\wuw\.dsh\plugins\dsh-deepseek-cost
-node test/fold.test.mjs      # 24 pricing/fold cases
+node test/fold.test.mjs      # 26 pricing/fold cases
 node test/client.test.mjs    # 21 browser-half render/wiring cases
-node test/wiring.test.mjs    #  7 host-half + package-resolution cases
+node test/wiring.test.mjs    #  8 host-half + package-resolution cases
 ```
 
 `fold.test.mjs` cases 1 and 2 reproduce two aggregates from a real DeepSeek
@@ -366,15 +377,18 @@ The price book lives at the top of `lib/index.js` (`FLASH_TIERS`, `PRO_TIERS`,
 `{ from, ... }` entry when DeepSeek changes rates.
 
 `stateVersion` must be bumped whenever the fold's meaning changes, so persisted
-projection checkpoints are discarded instead of forward-applied — it is at `3`:
+projection checkpoints are discarded instead of forward-applied — it is at `4`:
 
 | Version | Change |
 | ---: | --- |
 | 1 | initial session and current-turn totals |
 | 2 | added the per-turn ledger |
 | 3 | added `deepseek-account` to the billed routes |
+| 4 | the 计费时段 label follows every routed attempt, not only billed ones; statutory holidays are off-peak all day |
 
-The version-3 bump is what retro-prices account-route calls that were already
-logged while the route was still billed `0`: the version-2 rows are discarded and
-every session refolds from the log, so a session that used the account mode
-before the upgrade shows its account cost too.
+A bump is what retro-applies a correction to already-logged sessions: the old
+rows are discarded and every session refolds from its log. Version 3 is how
+account-route calls logged while the route was still billed `0` got their real
+price; version 4 is how a session whose window label had frozen at its last
+official attempt gets the right one, and how a holiday request priced at peak
+gets re-priced off-peak.
