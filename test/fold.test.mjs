@@ -129,6 +129,42 @@ const usage = (input, output, cacheRead, cacheWrite = 0) => ({
 	console.log('6b ok earlier Saturday 10:00        ', view.cost.toFixed(6));
 }
 
+// 6c. Statutory holidays are off-peak all day, exactly like weekends. The
+//     published rule excludes 中国法定节假日 from the weekday windows, so a
+//     holiday that falls Monday–Friday would otherwise be charged double.
+//     Ranges from the State Council's 2026 notice, 国办发明电〔2025〕7号.
+{
+	const weekday = (t) => {
+		const day = new Date(t + 8 * 3600 * 1000).getUTCDay();
+		return day >= 1 && day <= 5;
+	};
+	// One holiday per range, each inside a peak window and on a weekday.
+	const holidays = [
+		['元旦', bj(2026, 1, 1, 10, 0)],
+		['春节', bj(2026, 2, 17, 10, 0)],
+		['春节 last day', bj(2026, 2, 23, 15, 0)],
+		['清明', bj(2026, 4, 6, 10, 0)],
+		['劳动节', bj(2026, 5, 1, 10, 0)],
+		['端午', bj(2026, 6, 19, 10, 0)],
+		['中秋', bj(2026, 9, 25, 10, 0)],
+		['国庆', bj(2026, 10, 1, 10, 0)],
+		['国庆 last day', bj(2026, 10, 7, 15, 0)]
+	];
+	for (const [name, at] of holidays) {
+		assert.ok(weekday(at), `${name} fixture must fall on a weekday`);
+		const view = fold([...start(1, 0, at), message(1, 0, at, usage(1e6, 0, 0), { provider: 'deepseek-official', model: 'deepseek-flash' })]);
+		assert.equal(view.peak, false, `${name} must be off-peak`);
+	}
+	// The two holidays the price book covers are priced at the off-peak miss rate.
+	const national = fold([...start(1, 0, bj(2026, 10, 1, 10, 0)), message(1, 0, bj(2026, 10, 1, 10, 0), usage(1e6, 0, 0), { provider: 'deepseek-official', model: 'deepseek-flash' })]);
+	assert.ok(Math.abs(national.cost - 1) < 1e-9, `expected the off-peak 1, got ${national.cost}`);
+	// The working days on either side are ordinary weekdays and stay peak.
+	const before = fold([...start(1, 0, bj(2026, 9, 30, 10, 0)), message(1, 0, bj(2026, 9, 30, 10, 0), usage(1e6, 0, 0), { provider: 'deepseek-official', model: 'deepseek-flash' })]);
+	assert.equal(before.peak, true, 'the day before the holiday is still a weekday');
+	assert.ok(Math.abs(before.cost - 2) < 1e-9, `expected the peak 2, got ${before.cost}`);
+	console.log('6c ok statutory holidays off-peak   ', national.cost.toFixed(6), '/', before.cost.toFixed(6));
+}
+
 // 7. Non-official providers cost 0 but stay counted.
 {
 	const at = bj(2026, 9, 11, 20, 0);
@@ -421,6 +457,52 @@ const usage = (input, output, cacheRead, cacheWrite = 0) => ({
 	const pro = fold([...start(1, 0, at), message(1, 0, at, usage(1e6, 0, 0), { provider: 'deepseek-account', model: 'deepseek-v4-pro' })]);
 	assert.ok(Math.abs(pro.cost - 4.5) < 1e-9, `expected the Pro miss rate 4.5, got ${pro.cost}`);
 	console.log('20 ok deepseek-account == official   ', account.cost.toFixed(6), '/', pro.cost.toFixed(6));
+}
+
+// 21. The billing-window label follows the LATEST attempt that had a route, not
+//     the latest one that was billed. Reading it off the priced path alone froze
+//     it at the last official attempt: a session that ran on the official route
+//     during an off-peak morning and then moved to a third-party route in the
+//     14:00–18:00 window kept reading 空闲时段 for the rest of the day.
+{
+	const offPeak = bj(2026, 10, 22, 8, 0); // Thursday 08:00 — before the 09:00 window opens
+	const peak = bj(2026, 10, 22, 14, 30); // same Thursday 14:30 — inside the 14:00–18:00 window
+	assert.equal(new Date(offPeak + 8 * 3600 * 1000).getUTCDay(), 4, 'fixture must be a Thursday');
+	assert.equal(new Date(peak + 8 * 3600 * 1000).getUTCDay(), 4, 'both fixtures must be the same Thursday');
+	const buckets = usage(1e6, 0, 0);
+
+	// Turn 1 bills on the official route during the off-peak morning.
+	let state = unit.init();
+	for (const e of [...start(1, 0, offPeak), message(1, 0, offPeak, buckets, { provider: 'deepseek-account', model: 'deepseek-flash' })]) state = unit.apply(state, e);
+	assert.equal(unit.wire.view(state).peak, false, 'the off-peak attempt labels off-peak');
+
+	// Turn 2 moves to a third-party route inside the peak window. That attempt is
+	// billed 0, which is exactly why reading the label off the priced path alone
+	// left it stuck at 空闲时段 for the rest of the day.
+	for (const e of [event('turn/end', { turn: 1, reason: 'success' }, offPeak), ...start(2, 0, peak), message(2, 0, peak, buckets, { provider: 'local', model: 'routerbus/deepseek-v4.1-flash' })]) state = unit.apply(state, e);
+	const view = unit.wire.view(state);
+	assert.equal(view.peak, true, 'the newest routed attempt is the one that names the window');
+	assert.equal(view.freeCalls, 1, 'the third-party attempt is the unbilled one');
+	// The estimate is peak-priced too, so the label and the amount agree.
+	const offPeakTier = 1e6 * 0.05 * (1 / 1e6) + 1e6 * 0.95 * (0.02 / 1e6);
+	assert.ok(Math.abs(view.estCost - 2 * offPeakTier) < 1e-9, `expected the peak estimate ${2 * offPeakTier}, got ${view.estCost}`);
+
+	// An attempt that names no route of its own inherits the last one seen, so it
+	// is priced like that route and moves the window with it.
+	const inherited = fold([
+		...start(1, 0, peak),
+		message(1, 0, peak, buckets, { provider: 'deepseek-account', model: 'deepseek-flash' }),
+		...start(2, 0, offPeak),
+		event('assistant/message', { turn: 2, step: 0, message: { source: {} }, stream: [], usage: buckets }, offPeak)
+	]);
+	assert.equal(inherited.unpricedCalls, 0, 'the remembered route is reused rather than counted unpriced');
+	assert.equal(inherited.peak, false, 'and the window follows the new attempt back to off-peak');
+
+	// With no route ever seen there is no window to name, so it stays off-peak.
+	const never = fold([...start(1, 0, peak), event('assistant/message', { turn: 1, step: 0, message: { source: {} }, stream: [], usage: buckets }, peak)]);
+	assert.equal(never.peak, false, 'an unrouted session has no window');
+	assert.equal(never.unpricedCalls, 1, 'and its attempt is counted unpriced');
+	console.log('21 ok window follows every route   ', view.peak, '/', view.estCost.toFixed(6));
 }
 
 console.log('\nall checks passed');

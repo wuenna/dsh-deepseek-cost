@@ -31,9 +31,10 @@ process.env.DSH_HOME = sandboxHome;
 	assert.deepEqual(host.inject, ['sessionProjections']);
 	assert.equal(host.deepseekCostProjectionDefinition.key, 'deepseekCost');
 	// 2 added the per-turn ledger, 3 added the `deepseek-account` route to the
-	// billed set; a mismatched checkpoint is replayed from the log rather than
-	// trusted, which is what retro-prices calls logged under the older rules.
-	assert.equal(host.deepseekCostProjectionDefinition.stateVersion, 3);
+	// billed set, 4 corrected the billing-window label; a mismatched checkpoint
+	// is replayed from the log rather than trusted, which is what retro-applies
+	// a correction to sessions already logged under the older rules.
+	assert.equal(host.deepseekCostProjectionDefinition.stateVersion, 4);
 	assert.deepEqual(host.deepseekCostProjectionDefinition.init().turns, {}, 'the ledger starts empty');
 	assert.equal(typeof host.deepseekCostProjectionDefinition.init, 'function');
 	assert.equal(typeof host.deepseekCostProjectionDefinition.apply, 'function');
